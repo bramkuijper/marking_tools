@@ -5,19 +5,32 @@ import shutil
 
 class MarkSheetMaker:
 
+    colnum_name = 1
+    colnum_number = 0
+    colnum_group = None
     num_paragraph_student_num = 1
     num_paragraph_student_module = 3
     
     def __init__(self
             ,module_code
             ,student_list_filename
-            ,marksheet_filename):
+            ,marksheet_filename
+            ,student_list_grouping_var=None):
 
         self.module_code = module_code
+        self.grouping_var = student_list_grouping_var
+
+        # if there is a grouping variable in the first column
+        # shift the columns
+        if self.grouping_var != None:
+            self.colnum_group = 0
+            self.colnum_name = self.colnum_name + 1
+            self.colnum_number = self.colnum_number + 1
+
         self.marksheet_filename = marksheet_filename
         self.read_student_list(student_list_filename)
-
         self.copy_marksheets()
+
         
     # read in the list of students and modify 
     # columns so that we end up with student number, name, surname
@@ -26,13 +39,22 @@ class MarkSheetMaker:
                 filepath_or_buffer=filename
                 ,header=None)
 
-        self.keep_first_two_columns()
+        self.keep_name_number_cols()
         self.edit_student_number_column()
         self.edit_student_name_column()
 
-    def keep_first_two_columns(self):
-        self.student_df = self.student_df[[0,1]]
-        self.student_df.columns = ["number","name"]
+    def keep_name_number_cols(self):
+
+        col_list = [self.colnum_number,self.colnum_name]
+        col_names = ["number","name"]
+
+        # if there is a grouping var add it to the list
+        if type(self.colnum_group) == type(2):
+            col_list = [self.colnum_group] + col_list
+            col_names  = ["group"] + col_names
+
+        self.student_df = self.student_df[col_list]
+        self.student_df.columns = col_names
 
     # remove trailing slash in student num
     def transform_number(self,x):
@@ -68,9 +90,16 @@ class MarkSheetMaker:
         self.student_df["name"] = self.student_df["name"].apply(self.transform_name)
 
     def make_marksheet_path(self, row, path_end):
-        path = getattr(row, "number") + \
-                " " + getattr(row, "name") + \
-                " " + path_end
+
+        path = ""
+
+        # if there is a grouping variable add the dir
+        if self.grouping_var != None:
+            path = self.group_folder_prefix + getattr(row,"group") + "/"
+
+        path += getattr(row, "number") + \
+            " " + getattr(row, "name") + \
+            " " + path_end
 
         return(path)
 
@@ -84,8 +113,18 @@ class MarkSheetMaker:
 
         marksheet_doc.save(path_or_stream=path)
 
+    def check_group_folder_exists(self, row):
+        # make folder name
+        folder_name = self.group_folder_prefix + getattr(row, "group")
+        if !os.path.exists(folder_name):
+            os.mkdir(folder_name)
+
     def copy_marksheets(self):
         for row in self.student_df.itertuples():
+
+            if self.grouping_var != None:
+                check_group_folder_exists(row)
+
             new_path_marksheet = self.make_marksheet_path(row=row, path_end=self.marksheet_filename)
             shutil.copy(self.marksheet_filename, new_path_marksheet)
             
